@@ -4,57 +4,81 @@ import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 
-def train_large(model,train_loader,optimizer,epochs,device):
-        model.train()
+# Train Large Model
+def train_large(model, train_loader, optimizer, epochs, device):
+    model.train()
+    loss_arr = []
 
-        loss_arr = []
+    for e in range(epochs):
+        epoch_loss = 0
+        for data, label in train_loader:
+            data, label = data.to(device), label.to(device)
+            optimizer.zero_grad()
+            out = model(data)
+            loss = F.cross_entropy(out, label)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
 
-        for e in range(epochs):
-          epoch_loss = 0
-          for i ,(data,label) in enumerate(train_loader):
-              data, label = data.to(device), label.to(device)
-              optimizer.zero_grad()
-              out = model(data)
-              loss = F.cross_entropy(out,label)
-              loss.backward()
-              optimizer.step()
+        loss_arr.append(epoch_loss)
+        print(f'Epoch {e+1}/{epochs}, Loss: {epoch_loss:.4f}')
 
-              epoch_loss += loss
+    plt.plot(loss_arr)
+    plt.title('Training Loss - Large Model')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.show()
 
-          loss_arr.append(epoch_loss)
-          print(f'Epoch {e+1} loss = {epoch_loss}')
+# Train Distil Model
+def train_distil(large_model, distil_model, train_loader, optimizer, loss_fn, device, epochs=10, temp=20, distil_weight=0.7):
+    large_model.eval()
+    distil_model.train()
+    loss_arr = []
 
-        plt.plot(loss_arr)
-        plt.show()
+    for e in range(epochs):
+        epoch_loss = 0
+        for data, label in train_loader:
+            data, label = data.to(device), label.to(device)
+            optimizer.zero_grad()
 
-def train_distil(large_model,distil_model,train_loader,optimizer,loss_fn,epochs = 10,temp = 20,distil_weight = 0.7):
-        large_model.eval()
-        distil_model.train()
+            with torch.no_grad():
+                soft_label = F.softmax(large_model(data) / temp, dim=1)
 
-        loss_arr = []
+            out = distil_model(data)
+            soft_out = F.softmax(out / temp, dim=1)
 
-        for e in range(epochs):
-            epoch_loss = 0
+            loss = (1 - distil_weight) * F.cross_entropy(out, label) + distil_weight * loss_fn(soft_out, soft_label)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
 
-            for (data,label) in train_loader:
+        loss_arr.append(epoch_loss)
+        print(f'Epoch {e+1}/{epochs}, Loss: {epoch_loss:.4f}')
 
-                data, label = data.to(device), label.to(device)
-                optimizer.zero_grad()
+    plt.plot(loss_arr)
+    plt.title('Training Loss - Distil Model')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.show()
 
-                soft_label = F.softmax(large_model(data)/temp)
+def grid_search_hyperparams(train_loader, test_loader, param_grid):
+    best_params = None
+    best_accuracy = 0.0
 
+    for params in ParameterGrid(param_grid):
+        print(f"Testing with parameters: {params}")
 
-                out = distil_model(data)
-                soft_out = F.softmax(out/temp)  
+        large_model = LargeModel().to(device)
+        optimizer_large = optim.SGD(large_model.parameters(), lr=params['lr'], momentum=params['momentum'])
 
-                loss = (1 - distil_weight) * F.cross_entropy(out,label) + (distil_weight) * loss_fn(soft_label,soft_out)
-                loss.backward()
-                optimizer.step()
+        print("Training Large Model...")
+        train_large(large_model, train_loader, optimizer_large, params['epochs'], device)
 
-                epoch_loss += loss
+        accuracy = evaluate(large_model, test_loader, device)
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_params = params
 
-            loss_arr.append(epoch_loss)
-            print(f'Epoch {e+1} loss = {epoch_loss}')
-
-        plt.plot(loss_arr)
-        plt.show()
+    print(f"Best Parameters: {best_params}")
+    print(f"Best Accuracy: {best_accuracy:.4f}")
+    return best_params, best_accuracy

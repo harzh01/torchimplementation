@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn.functional as F
 from torchvision import datasets, transforms
-
+from torch.utils.data import DataLoader
+from sklearn.model_selection import ParameterGrid
 import matplotlib.pyplot as plt
 
 from train import train_large,train_distil
@@ -11,37 +12,62 @@ from evaluate import eval
 from model import large,distil
 
 def main():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     batch_size = 100
 
+    # Loading MNIST dataset
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=False,
-                        transform=transforms.Compose([
-                            transforms.ToTensor(),
-                            transforms.Normalize((0.1307,), (0.3081,))
-                        ])),
-        batch_size = batch_size, shuffle=True)
+        datasets.MNIST('../data', train=True, download=True,
+                       transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))
+                       ])),
+        batch_size=batch_size, shuffle=True)
 
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                            transforms.ToTensor(),
-                            transforms.Normalize((0.1307,), (0.3081,))
-                        ])),
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))
+                       ])),
         batch_size=batch_size, shuffle=True)
 
-    large_model = large().to(device)
-    optimizer = optim.SGD(large_model.parameters(), lr=0.01, momentum=0.9)
-    epochs = 20
-    train_large(large_model,train_loader,optimizer,epochs,device)
-    eval(large_model,test_loader)
+    # Define parameter grid for hyperparameter tuning
+    param_grid = {
+        'lr': [0.01, 0.05],
+        'momentum': [0.9, 0.95],
+        'epochs': [10, 15],
+    }
 
-    distil_model = distil().to(device)
-    loss_fn = nn.MSELoss()
-    distil_weight = 0.7
-    temp = 20
-    train_distil(large_model,distil_model,train_loader,optimizer,loss_fn,epochs,temp,distil_weight)
-    eval(distil_model,test_loader)
+    print("Starting Grid Search for Large Model...")
+    best_params, best_accuracy = grid_search_hyperparams(train_loader, test_loader, param_grid)
+
+    # Train Distil Model with best parameters found
+    large_model = LargeModel().to(device)
+    optimizer_large = optim.SGD(large_model.parameters(), lr=best_params['lr'], momentum=best_params['momentum'])
+    print("Training Large Model with Best Parameters...")
+    train_large(large_model, train_loader, optimizer_large, best_params['epochs'], device)
+
+    print("Evaluating Large Model with Best Parameters...")
+    evaluate(large_model, test_loader, device)
+
+    distil_model = DistilModel().to(device)
+    optimizer_distil = optim.SGD(distil_model.parameters(), lr=best_params['lr'], momentum=best_params['momentum'])
+    loss_fn = nn.KLDivLoss(reduction='batchmean')
+
+    print("Training Distil Model...")
+    train_distil(
+        large_model=large_model,
+        distil_model=distil_model,
+        train_loader=train_loader,
+        optimizer=optimizer_distil,
+        loss_fn=loss_fn,
+        device=device,
+        epochs=best_params['epochs'],
+        temp=20,
+        distil_weight=0.7
+    )
+
+    print("Evaluating Distil Model...")
+    evaluate(distil_model, test_loader, device)
 
 if __name__ == '__main__':
     main()

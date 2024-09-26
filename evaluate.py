@@ -1,17 +1,15 @@
-import torch
-
-def eval(model,data_loader):
-
+def evaluate(model, data_loader, device):
     model.eval()
-    total = len(data_loader.dataset)
     correct = 0
+    total = len(data_loader.dataset)
 
     with torch.no_grad():
-      for data, target in data_loader:
-          data, target = data.to(device), target.to(device)
-          output = model(data) 
-          pred = output.argmax(dim=1, keepdim=True) 
-          correct += pred.eq(target.view_as(pred)).sum().item()
+        for data, target in data_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            pred = output.argmax(dim=1, keepdim=True)
+            correct += pred.eq(target.view_as(pred)).sum().item()
 
-    print(f'{correct}/{total} correct')
-    print(f'The accuracy pf the model is {correct/total}')
+    accuracy = correct / total
+    print(f'Accuracy: {accuracy:.4f} ({correct}/{total})')
+    return accuracy
