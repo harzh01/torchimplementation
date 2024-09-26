@@ -45,5 +45,7 @@ The main.py script includes a grid search functionality for hyperparameter optim
 
 # Results
 Best Hyperparameters: The optimal learning rate, momentum, and epoch count are determined via grid search.
-Large Model Performance: The large model achieves high accuracy on the MNIST dataset.
-Distil Model Performance: After distillation, the smaller distil model approaches the performance of the large model but with fewer parameters and faster inference time.
+
+Large Model Performance: The large model achieves high accuracy on the MNIST dataset. Accuracy: 0.9851
+
+Distil Model Performance: After distillation, the smaller distil model approaches the performance of the large model but with fewer parameters and faster inference time. Accuracy: 0.9759
